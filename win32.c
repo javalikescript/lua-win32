@@ -24,7 +24,7 @@ static WCHAR *decode_string(const char *s) {
   WCHAR *ws = NULL;
   if (s != NULL) {
     size = MultiByteToWideChar(codePage, 0, s, -1, 0, 0);
-    ws = (WCHAR *)GlobalAlloc(GMEM_FIXED, sizeof(WCHAR) * size);
+    ws = (WCHAR *)GlobalAlloc(GMEM_FIXED, sizeof(WCHAR) * size); // We may let Lua manage the memory
     if (ws != NULL) {
       MultiByteToWideChar(codePage, 0, s, -1, ws, size);
     }
@@ -62,7 +62,7 @@ static const char *const win32_code_page_names[] = {
   "default", "console", "utf-8", "ansi", "oem", "symbol", NULL
 };
 
-static const UINT const win32_code_pages[] = {
+static const UINT win32_code_pages[] = {
   LUA_WIN32_DEFAULT_CODE_PAGE, 0, CP_UTF8, CP_ACP, CP_OEMCP, CP_SYMBOL
 };
 
@@ -146,8 +146,13 @@ static int win32_ShellExecute(lua_State *l) {
   WCHAR *file = decode_string(luaL_optstring(l, 2, NULL));
   WCHAR *parameters = decode_string(luaL_optstring(l, 3, NULL));
   WCHAR *directory = decode_string(luaL_optstring(l, 4, NULL));
-  int result = (int) ShellExecuteW(NULL, operation, file, parameters, directory, showCmd);
-  lua_pushboolean(l, (result <= 32));
+  int result = (int) (INT_PTR) ShellExecuteW(NULL, operation, file, parameters, directory, showCmd);
+  if (result <= 32) {
+    lua_pushnil(l);
+  	lua_pushinteger(l, result);
+    return 2;
+  }
+  lua_pushboolean(l, TRUE);
   return 1;
 }
 
@@ -166,12 +171,12 @@ static int win32_MessageBox(lua_State *l) {
 #define FILENAME_MAX_SIZE 64
 #define OPENFILES_MAX_COUNT 24
 #define OPENFILES_MAX_SIZE (FOLDERNAME_MAX_SIZE + FILENAME_MAX_SIZE * OPENFILES_MAX_COUNT)
+#define DEFAULT_FLAGS (OFN_LONGNAMES | OFN_NOCHANGEDIR | OFN_EXPLORER)
 
-static int get_filename(lua_State *l, int isSave) {
+static int get_filename(lua_State *l, int isSave, int flags) {
   BOOL done;
 	OPENFILENAMEW ofn;
 	WCHAR filename[OPENFILES_MAX_SIZE];
-	int flags = OFN_LONGNAMES | OFN_NOCHANGEDIR | OFN_EXPLORER;
 	HWND hwndOwner = NULL;
   filename[0] = 0;
   memset(&ofn, 0, sizeof(ofn));
@@ -195,6 +200,7 @@ static int get_filename(lua_State *l, int isSave) {
   }
   if (done) {
     if ((ofn.Flags & OFN_ALLOWMULTISELECT) != 0) {
+      int count = 0;
       WCHAR *p;
       for (p = ofn.lpstrFile;;) {
         int len = wcslen(p);
@@ -203,22 +209,32 @@ static int get_filename(lua_State *l, int isSave) {
         }
         trace("file: \"%ls\"", p);
         push_encoded_string(l, p);
+        count++;
         p += len + 1;
       }
+      return count;
     } else {
       push_encoded_string(l, ofn.lpstrFile);
+      return 1;
     }
+  } else {
+    lua_pushnil(l);
+    return 1;
   }
-  lua_pushboolean(l, done);
-  return 1;
 }
 
 static int win32_GetOpenFileName(lua_State *l) {
-  return get_filename(l, 0);
+  // OFN_CREATEPROMPT OFN_FILEMUSTEXIST
+  int flags = DEFAULT_FLAGS;
+  if (lua_toboolean(l, 1)) {
+    flags |= OFN_ALLOWMULTISELECT;
+  }
+  return get_filename(l, 0, flags);
 }
 
 static int win32_GetSaveFileName(lua_State *l) {
-  return get_filename(l, 1);
+  // OFN_OVERWRITEPROMPT
+  return get_filename(l, 1, DEFAULT_FLAGS);
 }
 
 LUALIB_API int luaopen_win32(lua_State *l) {
