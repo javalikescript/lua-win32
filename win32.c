@@ -15,6 +15,35 @@
 #include <shellapi.h>
 #include <commdlg.h>
 
+static HWND hwndOwner = NULL;
+
+typedef struct {
+  DWORD processId;
+  HWND hwnd;
+} EnumData;
+
+BOOL CALLBACK EnumProc(HWND hwnd, LPARAM lParam) {
+  EnumData *ed = (EnumData*)lParam;
+  DWORD processId = 0;
+  GetWindowThreadProcessId(hwnd, &processId);
+  if (ed->processId == processId) {
+    ed->hwnd = hwnd;
+    SetLastError(ERROR_SUCCESS);
+    return FALSE;
+  }
+  return TRUE;
+}
+
+static HWND FindCurrentProcessWindow(void) {
+  EnumData ed;
+  ed.processId = GetCurrentProcessId();
+  ed.hwnd = NULL;
+  if (!EnumWindows(EnumProc, (LPARAM) &ed) && (GetLastError() == ERROR_SUCCESS)) {
+    return ed.hwnd;
+  }
+  return NULL;
+}
+
 #define LUA_WIN32_DEFAULT_CODE_PAGE CP_UTF8
 
 static UINT codePage = LUA_WIN32_DEFAULT_CODE_PAGE;
@@ -140,13 +169,37 @@ static int win32_GetCommandLineArguments(lua_State *l) {
   return nArgs;
 }
 
+static const char *const win32_window_owner_names[] = {
+  "none", "check", "process", NULL
+};
+
+static int win32_SetWindowOwner(lua_State *l) {
+  int opt = luaL_checkoption(l, 1, "process", win32_window_owner_names);
+  switch(opt) {
+  case 0:
+    hwndOwner = NULL;
+    break;
+  case 1:
+    if ((hwndOwner != NULL) && !IsWindow(hwndOwner)) {
+      hwndOwner = NULL;
+    }
+    break;
+  case 2:
+    hwndOwner = FindCurrentProcessWindow();
+    break;
+  }
+  trace("win32_SetWindowOwner() %p\n", hwndOwner);
+  lua_pushboolean(l, hwndOwner != NULL);
+  return 1;
+}
+
 static int win32_ShellExecute(lua_State *l) {
 	int showCmd = SW_SHOWNORMAL;
   WCHAR *operation = decode_string(luaL_optstring(l, 1, NULL));
   WCHAR *file = decode_string(luaL_optstring(l, 2, NULL));
   WCHAR *parameters = decode_string(luaL_optstring(l, 3, NULL));
   WCHAR *directory = decode_string(luaL_optstring(l, 4, NULL));
-  int result = (int) (INT_PTR) ShellExecuteW(NULL, operation, file, parameters, directory, showCmd);
+  int result = (int) (INT_PTR) ShellExecuteW(hwndOwner, operation, file, parameters, directory, showCmd);
   if (result <= 32) {
     lua_pushnil(l);
   	lua_pushinteger(l, result);
@@ -157,11 +210,10 @@ static int win32_ShellExecute(lua_State *l) {
 }
 
 static int win32_MessageBox(lua_State *l) {
-  HWND hwndOwner = NULL;
   WCHAR *text = decode_string(luaL_optstring(l, 1, NULL));
   WCHAR *caption = decode_string(luaL_optstring(l, 2, NULL));
   unsigned int type = luaL_optinteger(l, 3, MB_OK);
-  trace("win32_MessageBox()");
+  trace("win32_MessageBox()\n");
   int result = MessageBoxW(hwndOwner, text, caption, type);
 	lua_pushinteger(l, result);
   return 1;
@@ -177,7 +229,6 @@ static int get_filename(lua_State *l, int isSave, int flags) {
   BOOL done;
 	OPENFILENAMEW ofn;
 	WCHAR filename[OPENFILES_MAX_SIZE];
-	HWND hwndOwner = NULL;
   filename[0] = 0;
   memset(&ofn, 0, sizeof(ofn));
   ofn.lStructSize = sizeof(ofn);
@@ -207,20 +258,17 @@ static int get_filename(lua_State *l, int isSave, int flags) {
         if (len == 0) {
           break;
         }
-        trace("file: \"%ls\"", p);
+        trace("file: \"%ls\"\n", p);
         push_encoded_string(l, p);
         count++;
         p += len + 1;
       }
       return count;
-    } else {
-      push_encoded_string(l, ofn.lpstrFile);
-      return 1;
     }
-  } else {
-    lua_pushnil(l);
+    push_encoded_string(l, ofn.lpstrFile);
     return 1;
   }
+  return 0;
 }
 
 static int win32_GetOpenFileName(lua_State *l) {
@@ -247,6 +295,7 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "GetMessageFromSystem", win32_GetMessageFromSystem },
     { "GetCommandLine", win32_GetCommandLine },
     { "GetCommandLineArguments", win32_GetCommandLineArguments },
+    { "SetWindowOwner", win32_SetWindowOwner },
     { "ShellExecute", win32_ShellExecute },
     { "MessageBox", win32_MessageBox },
     { "GetOpenFileName", win32_GetOpenFileName },
