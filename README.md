@@ -33,3 +33,13 @@ Shows the file selection dialog and returns the selected file name as string.
 If multiple selection is enabled then returns the selected path followed by the file names as strings. This method will block.
 * _GetSaveFileName_
 Shows the file selection dialog and returns the selected file name as string. This method will block.
+* _WaitProcessId_
+Waits for a process identifier to terminate
+* _GetExitCodeProcess_
+Returns a process identifier exit code
+* _TerminateProcessId_
+Terminates a process identifier
+* _GetCurrentProcessId_
+Returns the current process identifier
+
+The field _constants_ contains constant values.

@@ -285,6 +285,68 @@ static int win32_GetSaveFileName(lua_State *l) {
   return get_filename(l, 1, DEFAULT_FLAGS);
 }
 
+static int win32_WaitProcessId(lua_State *l) {
+  DWORD exitCode = 0;
+  DWORD waitResult = 0;
+  BOOL exitCodeResult = FALSE;
+  DWORD pid = (DWORD) luaL_checkinteger(l, 1);
+  int timoutMs = luaL_optinteger(l, 2, 0);
+  int getExitCode = lua_toboolean(l, 3);
+  HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE, FALSE, pid);
+  if (hProcess != NULL) {
+    waitResult = WaitForSingleObject(hProcess, timoutMs);
+    if (getExitCode && (waitResult == WAIT_OBJECT_0)) {
+      exitCodeResult = GetExitCodeProcess(hProcess, &exitCode);
+    }
+    CloseHandle(hProcess);
+  }
+  lua_pushinteger(l, waitResult);
+  if (exitCodeResult) {
+    lua_pushinteger(l, exitCode);
+    return 2;
+  }
+  return 1;
+}
+
+static int win32_TerminateProcessId(lua_State *l) {
+  BOOL result = FALSE;
+  DWORD pid = (DWORD) luaL_checkinteger(l, 1);
+  int exitCode = luaL_optinteger(l, 2, 0);
+  HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE, FALSE, pid);
+  if (hProcess != NULL) {
+    result = TerminateProcess(hProcess, exitCode);
+    CloseHandle(hProcess);
+  }
+  lua_pushboolean(l, result);
+  return 1;
+}
+
+static int win32_GetExitCodeProcess(lua_State *l) {
+  BOOL result = FALSE;
+  DWORD pid = (DWORD) luaL_checkinteger(l, 1);
+  DWORD exitCode = 0;
+  HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (hProcess != NULL) {
+    result = GetExitCodeProcess(hProcess, &exitCode);
+    CloseHandle(hProcess);
+    if (result) {
+      lua_pushinteger(l, exitCode);
+      return 1;
+    }
+  }
+  lua_pushnil(l);
+  return 1;
+}
+
+static int win32_GetCurrentProcessId(lua_State *l) {
+	lua_pushinteger(l, GetCurrentProcessId());
+  return 1;
+}
+
+#define set_int_field(__LUA_STATE, __FIELD_NAME) \
+  lua_pushinteger(__LUA_STATE, __FIELD_NAME); \
+  lua_setfield(__LUA_STATE, -2, #__FIELD_NAME)
+
 LUALIB_API int luaopen_win32(lua_State *l) {
   trace("luaopen_win32()\n");
   luaL_Reg reg[] = {
@@ -300,13 +362,28 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "MessageBox", win32_MessageBox },
     { "GetOpenFileName", win32_GetOpenFileName },
     { "GetSaveFileName", win32_GetSaveFileName },
+    { "WaitProcessId", win32_WaitProcessId },
+    { "GetExitCodeProcess", win32_GetExitCodeProcess },
+    { "TerminateProcessId", win32_TerminateProcessId },
+    { "GetCurrentProcessId", win32_GetCurrentProcessId },
     { NULL, NULL }
   };
   lua_newtable(l);
   luaL_setfuncs(l, reg, 0);
+
+  lua_newtable(l);
+  // wait
+  set_int_field(l, WAIT_ABANDONED);
+  set_int_field(l, WAIT_OBJECT_0);
+  set_int_field(l, WAIT_TIMEOUT);
+  set_int_field(l, WAIT_FAILED);
+  // exit code
+  set_int_field(l, STILL_ACTIVE);
+  lua_setfield(l, -2, "constants");
+
   lua_pushliteral(l, "Lua win32");
   lua_setfield(l, -2, "_NAME");
-  lua_pushliteral(l, "0.1");
+  lua_pushliteral(l, "0.2");
   lua_setfield(l, -2, "_VERSION");
   trace("luaopen_win32() done\n");
   return 1;
