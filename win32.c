@@ -3,9 +3,12 @@
 
 //#define JLS_LUA_MOD_TRACE 1
 
-#ifdef JLS_LUA_MOD_TRACE
+#if JLS_LUA_MOD_TRACE == 1
 #include <stdio.h>
 #define trace(...) printf(__VA_ARGS__)
+#elif JLS_LUA_MOD_TRACE == 2
+static char debug_buffer[1024];
+#define trace(...) sprintf(debug_buffer, __VA_ARGS__); OutputDebugStringA(debug_buffer)
 #else
 #define trace(...) ((void)0)
 #endif
@@ -22,7 +25,7 @@ typedef struct {
   HWND hwnd;
 } EnumData;
 
-BOOL CALLBACK EnumProc(HWND hwnd, LPARAM lParam) {
+BOOL CALLBACK enum_windows_callback(HWND hwnd, LPARAM lParam) {
   EnumData *ed = (EnumData*)lParam;
   DWORD processId = 0;
   GetWindowThreadProcessId(hwnd, &processId);
@@ -34,11 +37,12 @@ BOOL CALLBACK EnumProc(HWND hwnd, LPARAM lParam) {
   return TRUE;
 }
 
-static HWND FindCurrentProcessWindow(void) {
+static HWND find_current_process_window(void) {
   EnumData ed;
   ed.processId = GetCurrentProcessId();
   ed.hwnd = NULL;
-  if (!EnumWindows(EnumProc, (LPARAM) &ed) && (GetLastError() == ERROR_SUCCESS)) {
+  trace("find_current_process_window() pid is %lu\n", ed.processId);
+  if (!EnumWindows(enum_windows_callback, (LPARAM) &ed) && (GetLastError() == ERROR_SUCCESS)) {
     return ed.hwnd;
   }
   return NULL;
@@ -170,11 +174,11 @@ static int win32_GetCommandLineArguments(lua_State *l) {
 }
 
 static const char *const win32_window_owner_names[] = {
-  "none", "check", "process", NULL
+  "none", "check", "process", "process-check", NULL
 };
 
 static int win32_SetWindowOwner(lua_State *l) {
-  int opt = luaL_checkoption(l, 1, "process", win32_window_owner_names);
+  int opt = luaL_checkoption(l, 1, "process-check", win32_window_owner_names);
   switch(opt) {
   case 0:
     hwndOwner = NULL;
@@ -185,7 +189,12 @@ static int win32_SetWindowOwner(lua_State *l) {
     }
     break;
   case 2:
-    hwndOwner = FindCurrentProcessWindow();
+    hwndOwner = find_current_process_window();
+    break;
+  case 3:
+    if ((hwndOwner == NULL) || !IsWindow(hwndOwner)) {
+      hwndOwner = find_current_process_window();
+    }
     break;
   }
   trace("win32_SetWindowOwner() %p\n", hwndOwner);

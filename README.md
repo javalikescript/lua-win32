@@ -26,6 +26,10 @@ Returns the message associated to the specified error or to the last error
 Returns the command line as a string
 * _GetCommandLineArguments_
 Returns the command line arguments as a strings
+* _SetWindowOwner_
+Sets the window used in the _ShellExecute_, _MessageBox_, _GetOpenFileName_ and _GetSaveFileName_ functions
+* _ShellExecute_
+Performs an operation on the specified file, such ad "open" or "edit".
 * _MessageBox_
 Shows a message box with the specified text, title and type, default to OK. Returns the message box result. This method will block.
 * _GetOpenFileName_
