@@ -48,25 +48,35 @@ static HWND find_current_process_window(void) {
   return NULL;
 }
 
+static void* lua_newbuffer(lua_State *l, size_t size) {
+  void *p = lua_newuserdata(l, size);
+  lua_pop(l, 1);
+  return p;
+}
+
 #define LUA_WIN32_DEFAULT_CODE_PAGE CP_UTF8
 
 static UINT codePage = LUA_WIN32_DEFAULT_CODE_PAGE;
 
-static void decode_string(WCHAR *ws, DWORD size, const char *s) {
-  MultiByteToWideChar(codePage, 0, s, -1, ws, size);
+static void decode_string(WCHAR *ws, DWORD n, const char *s) {
+  MultiByteToWideChar(codePage, 0, s, -1, ws, n);
 }
 
 static WCHAR *new_decoded_string(lua_State *l, const char *s) {
-  DWORD size;
+  DWORD n;
   WCHAR *ws = NULL;
   if (s != NULL) {
-    size = MultiByteToWideChar(codePage, 0, s, -1, 0, 0);
-    ws = (WCHAR *)lua_newuserdata(l, sizeof(WCHAR) * size);
+    n = MultiByteToWideChar(codePage, 0, s, -1, 0, 0);
+    ws = (WCHAR *)lua_newbuffer(l, sizeof(WCHAR) * n);
     if (ws != NULL) {
-      decode_string(ws, size, s);
+      decode_string(ws, n, s);
     }
   }
   return ws;
+}
+
+static void encode_string(char *s, DWORD n, const WCHAR *ws) {
+  WideCharToMultiByte(codePage, 0, ws, -1, s, n, NULL, NULL);
 }
 
 static char *new_encoded_string(lua_State *l, WCHAR *ws) {
@@ -74,9 +84,9 @@ static char *new_encoded_string(lua_State *l, WCHAR *ws) {
   char *s = NULL;
   if (ws != NULL) {
     n = WideCharToMultiByte(codePage, 0, ws, -1, NULL, 0, NULL, NULL);
-    s = (char *)lua_newuserdata(l, n);
+    s = (char *)lua_newbuffer(l, n);
     if (s != NULL) {
-      WideCharToMultiByte(codePage, 0, ws, -1, s, n, NULL, NULL);
+      encode_string(s, n, ws);
     }
   }
   return s;
@@ -87,6 +97,7 @@ static void push_encoded_string(lua_State *l, WCHAR *ws) {
     char *s = new_encoded_string(l, ws);
     if (s != NULL) {
       lua_pushstring(l, s);
+      return;
     }
   }
   lua_pushnil(l);
@@ -278,13 +289,14 @@ static int GetFilename(lua_State *l, const char *filename, int isSave, int flags
         if (len == 0) {
           break;
         }
-        trace("file: \"%ls\"\n", p);
-        push_encoded_string(l, p);
         count++;
+        trace("file[%d]: \"%ls\"\n", count, p);
+        push_encoded_string(l, p);
         p += len + 1;
       }
       return count;
     }
+    trace("file: \"%ls\"\n", p);
     push_encoded_string(l, ofn.lpstrFile);
     return 1;
   }
