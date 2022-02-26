@@ -52,25 +52,29 @@ static HWND find_current_process_window(void) {
 
 static UINT codePage = LUA_WIN32_DEFAULT_CODE_PAGE;
 
-static WCHAR *decode_string(const char *s) {
+static void decode_string(WCHAR *ws, DWORD size, const char *s) {
+  MultiByteToWideChar(codePage, 0, s, -1, ws, size);
+}
+
+static WCHAR *new_decoded_string(lua_State *l, const char *s) {
   DWORD size;
   WCHAR *ws = NULL;
   if (s != NULL) {
     size = MultiByteToWideChar(codePage, 0, s, -1, 0, 0);
-    ws = (WCHAR *)GlobalAlloc(GMEM_FIXED, sizeof(WCHAR) * size); // We may let Lua manage the memory
+    ws = (WCHAR *)lua_newuserdata(l, sizeof(WCHAR) * size);
     if (ws != NULL) {
-      MultiByteToWideChar(codePage, 0, s, -1, ws, size);
+      decode_string(ws, size, s);
     }
   }
   return ws;
 }
 
-static char *encode_string(WCHAR *ws) {
+static char *new_encoded_string(lua_State *l, WCHAR *ws) {
   int n;
   char *s = NULL;
   if (ws != NULL) {
     n = WideCharToMultiByte(codePage, 0, ws, -1, NULL, 0, NULL, NULL);
-    s = (char *)GlobalAlloc(GMEM_FIXED, n);
+    s = (char *)lua_newuserdata(l, n);
     if (s != NULL) {
       WideCharToMultiByte(codePage, 0, ws, -1, s, n, NULL, NULL);
     }
@@ -78,17 +82,14 @@ static char *encode_string(WCHAR *ws) {
   return s;
 }
 
-static int push_encoded_string(lua_State *l, WCHAR *ws) {
+static void push_encoded_string(lua_State *l, WCHAR *ws) {
   if (ws != NULL) {
-    char *s = encode_string(ws);
+    char *s = new_encoded_string(l, ws);
     if (s != NULL) {
       lua_pushstring(l, s);
-      GlobalFree(s);
-      return 0;
     }
   }
   lua_pushnil(l);
-  return 1;
 }
 
 static const char *const win32_code_page_names[] = {
@@ -127,6 +128,11 @@ static int win32_GetCodePage(lua_State *l) {
 
 static int win32_SetCodePage(lua_State *l) {
   codePage = get_code_page_arg(l, 1, LUA_WIN32_DEFAULT_CODE_PAGE);
+  return 0;
+}
+
+static int win32_OutputDebugString(lua_State *l) {
+  OutputDebugStringW(new_decoded_string(l, lua_tostring(l, 1)));
   return 0;
 }
 
@@ -204,10 +210,11 @@ static int win32_SetWindowOwner(lua_State *l) {
 
 static int win32_ShellExecute(lua_State *l) {
 	int showCmd = SW_SHOWNORMAL;
-  WCHAR *operation = decode_string(luaL_optstring(l, 1, NULL));
-  WCHAR *file = decode_string(luaL_optstring(l, 2, NULL));
-  WCHAR *parameters = decode_string(luaL_optstring(l, 3, NULL));
-  WCHAR *directory = decode_string(luaL_optstring(l, 4, NULL));
+  WCHAR operation[32];
+  decode_string(operation, 32, luaL_optstring(l, 1, NULL));
+  WCHAR *file = new_decoded_string(l, luaL_optstring(l, 2, NULL));
+  WCHAR *parameters = new_decoded_string(l, luaL_optstring(l, 3, NULL));
+  WCHAR *directory = new_decoded_string(l, luaL_optstring(l, 4, NULL));
   int result = (int) (INT_PTR) ShellExecuteW(hwndOwner, operation, file, parameters, directory, showCmd);
   if (result <= 32) {
     lua_pushnil(l);
@@ -219,8 +226,8 @@ static int win32_ShellExecute(lua_State *l) {
 }
 
 static int win32_MessageBox(lua_State *l) {
-  WCHAR *text = decode_string(luaL_optstring(l, 1, NULL));
-  WCHAR *caption = decode_string(luaL_optstring(l, 2, NULL));
+  WCHAR *text = new_decoded_string(l, luaL_optstring(l, 1, NULL));
+  WCHAR *caption = new_decoded_string(l, luaL_optstring(l, 2, NULL));
   unsigned int type = luaL_optinteger(l, 3, MB_OK);
   trace("win32_MessageBox()\n");
   int result = MessageBoxW(hwndOwner, text, caption, type);
@@ -228,25 +235,29 @@ static int win32_MessageBox(lua_State *l) {
   return 1;
 }
 
-#define FOLDERNAME_MAX_SIZE 512
-#define FILENAME_MAX_SIZE 64
+#define FOLDERNAME_MAX_SIZE (MAX_PATH * 2)
+#define FILENAME_MAX_SIZE (MAX_PATH / 2)
 #define OPENFILES_MAX_COUNT 24
 #define OPENFILES_MAX_SIZE (FOLDERNAME_MAX_SIZE + FILENAME_MAX_SIZE * OPENFILES_MAX_COUNT)
 #define DEFAULT_FLAGS (OFN_LONGNAMES | OFN_NOCHANGEDIR | OFN_EXPLORER)
 
-static int get_filename(lua_State *l, int isSave, int flags) {
+static int GetFilename(lua_State *l, const char *filename, int isSave, int flags) {
   BOOL done;
 	OPENFILENAMEW ofn;
-	WCHAR filename[OPENFILES_MAX_SIZE];
-  filename[0] = 0;
+	WCHAR fb[OPENFILES_MAX_SIZE];
+  if (filename == NULL) {
+    fb[0] = 0;
+  } else {
+    decode_string(fb, OPENFILES_MAX_SIZE, filename);
+  }
   memset(&ofn, 0, sizeof(ofn));
   ofn.lStructSize = sizeof(ofn);
   ofn.hwndOwner = hwndOwner;
   ofn.hInstance = GetModuleHandle(NULL);
-  ofn.lpstrFilter = NULL;
+  ofn.lpstrFilter = NULL; // A buffer containing pairs of null-terminated filter strings, terminated by two NULL characters.
   ofn.lpstrCustomFilter = NULL;
   ofn.nFilterIndex = 0;
-  ofn.lpstrFile = filename;
+  ofn.lpstrFile = fb;
   ofn.nMaxFile = OPENFILES_MAX_SIZE;
   ofn.lpstrFileTitle = NULL;
   ofn.nMaxFileTitle = 0;
@@ -282,16 +293,22 @@ static int get_filename(lua_State *l, int isSave, int flags) {
 
 static int win32_GetOpenFileName(lua_State *l) {
   // OFN_CREATEPROMPT OFN_FILEMUSTEXIST
+  int flagIndex = 1;
   int flags = DEFAULT_FLAGS;
-  if (lua_toboolean(l, 1)) {
+  const char *filename = NULL;
+  if (!lua_isboolean(l, 1)) {
+    filename = luaL_optstring(l, 1, NULL);
+    flagIndex = 2;
+  }
+  if (lua_toboolean(l, flagIndex)) {
     flags |= OFN_ALLOWMULTISELECT;
   }
-  return get_filename(l, 0, flags);
+  return GetFilename(l, filename, 0, flags);
 }
 
 static int win32_GetSaveFileName(lua_State *l) {
   // OFN_OVERWRITEPROMPT
-  return get_filename(l, 1, DEFAULT_FLAGS);
+  return GetFilename(l, luaL_optstring(l, 1, NULL), 1, DEFAULT_FLAGS);
 }
 
 static int win32_WaitProcessId(lua_State *l) {
@@ -363,6 +380,7 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "GetConsoleOutputCodePage", win32_GetConsoleOutputCodePage },
     { "GetCodePage", win32_GetCodePage },
     { "SetCodePage", win32_SetCodePage },
+    { "OutputDebugString", win32_OutputDebugString },
     { "GetMessageFromSystem", win32_GetMessageFromSystem },
     { "GetCommandLine", win32_GetCommandLine },
     { "GetCommandLineArguments", win32_GetCommandLineArguments },
