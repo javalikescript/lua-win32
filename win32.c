@@ -3,14 +3,10 @@
 
 //#define JLS_LUA_MOD_TRACE 1
 
-#if JLS_LUA_MOD_TRACE == 1
-#include <stdio.h>
-#define trace(...) printf(__VA_ARGS__)
-#elif JLS_LUA_MOD_TRACE == 2
-static char debug_buffer[1024];
-#define trace(...) sprintf(debug_buffer, __VA_ARGS__); OutputDebugStringA(debug_buffer)
-#else
-#define trace(...) ((void)0)
+#include "lua-compat/luamod.h"
+
+#if LUA_VERSION_NUM < 503
+#include "lua-compat/compat.h"
 #endif
 
 #define WIN32_LEAN_AND_MEAN
