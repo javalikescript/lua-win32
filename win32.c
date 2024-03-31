@@ -382,6 +382,29 @@ static int win32_HasConsoleWindow(lua_State *l) {
   return 1;
 }
 
+static int win32_AllocConsole(lua_State *l) {
+	lua_pushboolean(l, AllocConsole());
+  return 1;
+}
+
+static int win32_AttachConsole(lua_State *l) {
+  DWORD pid = (DWORD) luaL_checkinteger(l, 1);
+	lua_pushboolean(l, AttachConsole(pid));
+  return 1;
+}
+
+static int win32_FreeConsole(lua_State *l) {
+	lua_pushboolean(l, FreeConsole());
+  return 1;
+}
+
+static int win32_RedirectStdConsole(lua_State *l) {
+  freopen("CON", "w", stdout) ;
+  freopen("CON", "w", stderr) ;
+	lua_pushboolean(l, 1);
+  return 1;
+}
+
 static int win32_GetWindowLongPtr(lua_State *l) {
   HWND hWnd = (HWND) luaL_checkinteger(l, 1);
   int nIndex = luaL_checkinteger(l, 2);
@@ -436,6 +459,10 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "TerminateProcessId", win32_TerminateProcessId },
     { "GetCurrentProcessId", win32_GetCurrentProcessId },
     { "HasConsoleWindow", win32_HasConsoleWindow },
+    { "AllocConsole", win32_AllocConsole },
+    { "AttachConsole", win32_AttachConsole },
+    { "FreeConsole", win32_FreeConsole },
+    { "RedirectStdConsole", win32_RedirectStdConsole },
     { "GetWindowLongPtr", win32_GetWindowLongPtr },
     { "SetWindowLongPtr", win32_SetWindowLongPtr },
     { "GetMenu", win32_GetMenu },
