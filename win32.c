@@ -377,9 +377,43 @@ static int win32_GetCurrentProcessId(lua_State *l) {
   return 1;
 }
 
+static int win32_HasConsoleWindow(lua_State *l) {
+	lua_pushboolean(l, GetConsoleWindow() != NULL);
+  return 1;
+}
+
+static int win32_GetWindowLongPtr(lua_State *l) {
+  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
+  int nIndex = luaL_checkinteger(l, 2);
+	lua_pushinteger(l, GetWindowLongPtr(hWnd, nIndex));
+  return 1;
+}
+
+static int win32_SetWindowLongPtr(lua_State *l) {
+  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
+  int nIndex = luaL_checkinteger(l, 2);
+  LONG value = luaL_checkinteger(l, 3);
+	lua_pushinteger(l, SetWindowLongPtr(hWnd, nIndex, value));
+  return 1;
+}
+
+static int win32_GetMenu(lua_State *l) {
+  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
+	lua_pushinteger(l, (lua_Integer) GetMenu(hWnd));
+  return 1;
+}
+
+static int win32_SetMenu(lua_State *l) {
+  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
+  HMENU hMenu = (HMENU) luaL_checkinteger(l, 2);
+	lua_pushboolean(l, SetMenu(hWnd, hMenu));
+  return 1;
+}
+
 #define set_int_field(__LUA_STATE, __FIELD_NAME) \
   lua_pushinteger(__LUA_STATE, __FIELD_NAME); \
   lua_setfield(__LUA_STATE, -2, #__FIELD_NAME)
+
 
 LUALIB_API int luaopen_win32(lua_State *l) {
   trace("luaopen_win32()\n");
@@ -401,6 +435,11 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "GetExitCodeProcess", win32_GetExitCodeProcess },
     { "TerminateProcessId", win32_TerminateProcessId },
     { "GetCurrentProcessId", win32_GetCurrentProcessId },
+    { "HasConsoleWindow", win32_HasConsoleWindow },
+    { "GetWindowLongPtr", win32_GetWindowLongPtr },
+    { "SetWindowLongPtr", win32_SetWindowLongPtr },
+    { "GetMenu", win32_GetMenu },
+    { "SetMenu", win32_SetMenu },
     { NULL, NULL }
   };
   lua_newtable(l);
@@ -414,6 +453,7 @@ LUALIB_API int luaopen_win32(lua_State *l) {
   set_int_field(l, WAIT_FAILED);
   // exit code
   set_int_field(l, STILL_ACTIVE);
+  // set constants table
   lua_setfield(l, -2, "constants");
 
   lua_pushliteral(l, "Lua win32");
