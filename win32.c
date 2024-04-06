@@ -405,15 +405,26 @@ static int win32_RedirectStdConsole(lua_State *l) {
   return 1;
 }
 
+// From winapi
+typedef struct {
+  HWND hwnd;
+} Window;
+
+static int win32_GetWindowHandle(lua_State *l) {
+  Window *wnd = (Window *)luaL_checkudata(l, 1, "Window");
+  lua_pushlightuserdata(l, wnd->hwnd);
+  return 1;
+}
+
 static int win32_GetWindowLongPtr(lua_State *l) {
-  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
+  HWND hWnd = (HWND) lua_touserdata(l, 1);
   int nIndex = luaL_checkinteger(l, 2);
 	lua_pushinteger(l, GetWindowLongPtr(hWnd, nIndex));
   return 1;
 }
 
 static int win32_SetWindowLongPtr(lua_State *l) {
-  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
+  HWND hWnd = (HWND) lua_touserdata(l, 1);
   int nIndex = luaL_checkinteger(l, 2);
   LONG value = luaL_checkinteger(l, 3);
 	lua_pushinteger(l, SetWindowLongPtr(hWnd, nIndex, value));
@@ -421,14 +432,14 @@ static int win32_SetWindowLongPtr(lua_State *l) {
 }
 
 static int win32_GetMenu(lua_State *l) {
-  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
-	lua_pushinteger(l, (lua_Integer) GetMenu(hWnd));
+  HWND hWnd = (HWND) lua_touserdata(l, 1);
+  lua_pushlightuserdata(l, GetMenu(hWnd));
   return 1;
 }
 
 static int win32_SetMenu(lua_State *l) {
-  HWND hWnd = (HWND) luaL_checkinteger(l, 1);
-  HMENU hMenu = (HMENU) luaL_checkinteger(l, 2);
+  HWND hWnd = (HWND) lua_touserdata(l, 1);
+  HMENU hMenu = (HMENU) lua_touserdata(l, 2);
 	lua_pushboolean(l, SetMenu(hWnd, hMenu));
   return 1;
 }
@@ -463,6 +474,7 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "AttachConsole", win32_AttachConsole },
     { "FreeConsole", win32_FreeConsole },
     { "RedirectStdConsole", win32_RedirectStdConsole },
+    { "GetWindowHandle", win32_GetWindowHandle },
     { "GetWindowLongPtr", win32_GetWindowLongPtr },
     { "SetWindowLongPtr", win32_SetWindowLongPtr },
     { "GetMenu", win32_GetMenu },
