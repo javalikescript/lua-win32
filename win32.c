@@ -492,6 +492,9 @@ LUALIB_API int luaopen_win32(lua_State *l) {
   set_int_field(l, WAIT_FAILED);
   // exit code
   set_int_field(l, STILL_ACTIVE);
+  // NULL
+  lua_pushlightuserdata(l, NULL);
+  lua_setfield(l, -2, "NULL");
   // set constants table
   lua_setfield(l, -2, "constants");
 
