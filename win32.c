@@ -3,16 +3,18 @@
 
 //#define JLS_LUA_MOD_TRACE 1
 
-#include "lua-compat/luamod.h"
-
 #if LUA_VERSION_NUM < 503
 #include "lua-compat/compat.h"
 #endif
+
+#include "lua-compat/luamod.h"
+#include "lua-compat/file.h"
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shellapi.h>
 #include <commdlg.h>
+#include <io.h>
 
 static HWND hwndOwner = NULL;
 
@@ -377,6 +379,32 @@ static int win32_GetCurrentProcessId(lua_State *l) {
   return 1;
 }
 
+static int getFileDesc(lua_State *l, int arg) {
+  void *pFileUData = luaL_testudata(l, arg, FILE_UDATA_NAME);
+  if (pFileUData != NULL) {
+    return fileno(REF_UDATA_FILE(pFileUData));
+  }
+  return luaL_checkinteger(l, arg);
+}
+
+static int win32_LockFile(lua_State *l) {
+  int fd = getFileDesc(l, 1);
+  lua_Integer fileOffset = luaL_checkinteger(l, 2);
+  lua_Integer numberOfBytesToLock = luaL_checkinteger(l, 3);
+  HANDLE hFile = (HANDLE)_get_osfhandle(fd);
+	lua_pushboolean(l, LockFile(hFile, (DWORD)fileOffset, 0, (DWORD)numberOfBytesToLock, 0));
+  return 1;
+}
+
+static int win32_UnlockFile(lua_State *l) {
+  int fd = getFileDesc(l, 1);
+  lua_Integer fileOffset = luaL_checkinteger(l, 2);
+  lua_Integer numberOfBytesToLock = luaL_checkinteger(l, 3);
+  HANDLE hFile = (HANDLE)_get_osfhandle(fd);
+	lua_pushboolean(l, UnlockFile(hFile, (DWORD)fileOffset, 0, (DWORD)numberOfBytesToLock, 0));
+  return 1;
+}
+
 static int win32_HasConsoleWindow(lua_State *l) {
 	lua_pushboolean(l, GetConsoleWindow() != NULL);
   return 1;
@@ -469,6 +497,8 @@ LUALIB_API int luaopen_win32(lua_State *l) {
     { "GetExitCodeProcess", win32_GetExitCodeProcess },
     { "TerminateProcessId", win32_TerminateProcessId },
     { "GetCurrentProcessId", win32_GetCurrentProcessId },
+    { "LockFile", win32_LockFile },
+    { "UnlockFile", win32_UnlockFile },
     { "HasConsoleWindow", win32_HasConsoleWindow },
     { "AllocConsole", win32_AllocConsole },
     { "AttachConsole", win32_AttachConsole },
