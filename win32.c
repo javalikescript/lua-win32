@@ -329,13 +329,16 @@ static int win32_WaitProcessId(lua_State *l) {
   int timoutMs = luaL_optinteger(l, 2, 0);
   int getExitCode = lua_toboolean(l, 3);
   HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | SYNCHRONIZE, FALSE, pid);
-  if (hProcess != NULL) {
-    waitResult = WaitForSingleObject(hProcess, timoutMs);
-    if (getExitCode && (waitResult == WAIT_OBJECT_0)) {
-      exitCodeResult = GetExitCodeProcess(hProcess, &exitCode);
-    }
-    CloseHandle(hProcess);
+  if (hProcess == NULL) {
+    lua_pushnil(l);
+    lua_pushstring(l, "not available");
+    return 2;
   }
+  waitResult = WaitForSingleObject(hProcess, timoutMs);
+  if (getExitCode && (waitResult == WAIT_OBJECT_0)) {
+    exitCodeResult = GetExitCodeProcess(hProcess, &exitCode);
+  }
+  CloseHandle(hProcess);
   lua_pushinteger(l, waitResult);
   if (exitCodeResult) {
     lua_pushinteger(l, exitCode);
@@ -349,10 +352,13 @@ static int win32_TerminateProcessId(lua_State *l) {
   DWORD pid = (DWORD) luaL_checkinteger(l, 1);
   int exitCode = luaL_optinteger(l, 2, 0);
   HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_TERMINATE, FALSE, pid);
-  if (hProcess != NULL) {
-    result = TerminateProcess(hProcess, exitCode);
-    CloseHandle(hProcess);
+  if (hProcess == NULL) {
+    lua_pushnil(l);
+    lua_pushstring(l, "not available");
+    return 2;
   }
+  result = TerminateProcess(hProcess, exitCode);
+  CloseHandle(hProcess);
   lua_pushboolean(l, result);
   return 1;
 }
@@ -362,16 +368,20 @@ static int win32_GetExitCodeProcess(lua_State *l) {
   DWORD pid = (DWORD) luaL_checkinteger(l, 1);
   DWORD exitCode = 0;
   HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
-  if (hProcess != NULL) {
-    result = GetExitCodeProcess(hProcess, &exitCode);
-    CloseHandle(hProcess);
-    if (result) {
-      lua_pushinteger(l, exitCode);
-      return 1;
-    }
+  if (hProcess == NULL) {
+    lua_pushnil(l);
+    lua_pushstring(l, "not available");
+    return 2;
+  }
+  result = GetExitCodeProcess(hProcess, &exitCode);
+  CloseHandle(hProcess);
+  if (result) {
+    lua_pushinteger(l, exitCode);
+    return 1;
   }
   lua_pushnil(l);
-  return 1;
+  lua_pushstring(l, "error");
+  return 2;
 }
 
 static int win32_GetCurrentProcessId(lua_State *l) {
